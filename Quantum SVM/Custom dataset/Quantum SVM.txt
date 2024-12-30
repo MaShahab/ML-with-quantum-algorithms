@@ -1,0 +1,110 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from qiskit import BasicAer
+from qiskit.circuit.library import ZZFeatureMap
+from qiskit.aqua import QuantumInstance, aqua_globals
+from qiskit.aqua.algorithms import QSVM
+from qiskit.aqua.utils import split_dataset_to_data_and_labels, map_label_to_class_name
+from qiskit.aqua.algorithms import SklearnSVM
+
+seed = 10599
+aqua_globals.random_seed = seed
+
+covid_df = pd.read_csv("covid_meta_data.csv")
+covid_df.head()
+feature_df = covid_df[['﻿Age', 'Sex', 'Fever_degree', 'Cough', 'Breath_shorness','Fatigue','Head_ache','Loss_taste','Throat_ache','Nose_congestion','Vomit_diarhea','Skin_lesions','Oxygen_level','Lung_scan_situation','Result']]
+X = np.asarray(feature_df)
+X[0:5]
+X_train, X_test = train_test_split( X, test_size=0.2, random_state=4)
+
+covid_df.head()
+
+dataset_train = pd.DataFrame({'﻿Age': X_train[:, 0], 'Sex': X_train[:, 1], 'Fever_degree': X_train[:, 2], 'Cough': X_train[:, 3], 'Breath_shorness': X_train[:, 4], 'Fatigue': X_train[:, 5], 'Head_ache': X_train[:, 6], 'Loss_taste': X_train[:, 7], 'Throat_ache': X_train[:, 8], 'Nose_congestion': X_train[:, 9], 'Vomit_diarhea': X_train[:, 10], 'Skin_lesions': X_train[:, 11], 'Oxygen_level': X_train[:, 12], 'Lung_scan_situation': X_train[:, 13], 'Result': X_train[:, 14]})
+dataset_test = pd.DataFrame({'﻿Age': X_test[:, 0], 'Sex': X_test[:, 1], 'Fever_degree': X_test[:, 2], 'Cough': X_test[:, 3], 'Breath_shorness': X_test[:, 4], 'Fatigue': X_test[:, 5], 'Head_ache': X_test[:, 6], 'Loss_taste': X_test[:, 7], 'Throat_ache': X_test[:, 8], 'Nose_congestion': X_test[:, 9], 'Vomit_diarhea': X_test[:, 10], 'Skin_lesions': X_test[:, 11], 'Oxygen_level': X_test[:, 12], 'Lung_scan_situation': X_test[:, 13], 'Result': X_test[:, 14]})
+
+dataset_train_normal = (dataset_train['Result'] == 'normal')
+dataset_train_normal = dataset_train.loc[dataset_train['Result'] == 'normal']
+dataset_train_covid = (dataset_train['Result'] == 'covid')
+dataset_train_covid = dataset_train.loc[dataset_train['Result'] == 'covid']
+###################################################################################################
+dataset_test_normal = (dataset_test['Result'] == 'normal')
+dataset_test_normal = dataset_test.loc[dataset_test['Result'] == 'normal']
+dataset_test_covid = (dataset_test['Result'] == 'covid')
+dataset_test_covid = dataset_test.loc[dataset_test['Result'] == 'covid']
+
+train_normal_row_collection = []
+train_covid_row_collection = []
+test_normal_row_collection = []
+test_covid_row_collection = []
+data_dict = {}
+
+for index, row in dataset_train_normal.iterrows():
+    normal_row = row['﻿Age'], row['Sex']
+    normal_row = list(normal_row)
+    train_normal_row_collection.append(normal_row)
+for index, row in dataset_train_covid.iterrows():
+    covid_row = row['﻿Age'], row['Sex']
+    covid_row = list(covid_row)
+    train_covid_row_collection.append(covid_row)
+for index, row in dataset_test_normal.iterrows():
+    normal_row = row['﻿Age'], row['Sex']
+    normal_row = list(normal_row)
+    test_normal_row_collection.append(normal_row)
+for index, row in dataset_test_covid.iterrows():
+    covid_row = row['﻿Age'], row['Sex']
+    covid_row = list(covid_row)
+    test_covid_row_collection.append(covid_row)
+
+npa_normal_train = np.asarray(train_normal_row_collection, dtype=np.float32)
+npa_covid_train = np.asarray(train_covid_row_collection, dtype=np.float32)
+npa_normal_test = np.asarray(test_normal_row_collection, dtype=np.float32)
+npa_covid_test = np.asarray(test_covid_row_collection, dtype=np.float32)
+
+train_dict = {'normal': npa_normal_train, 'covid': npa_covid_train}
+test_dict = {'normal': npa_normal_test, 'covid': npa_covid_test}
+
+class_labels = ['normal','covid']
+input_train = {'A': np.array([[-0.19172231, -0.48047638],[-0.08931675, -0.69047276]])}
+train_size = 20
+test_size = 10
+
+print(input_train)
+print(type(input_train['A']))
+
+from qiskit.ml.datasets import breast_cancer
+
+
+feature_dim = 2
+sample_total, training_input, test_input, class_labels = breast_cancer(
+    training_size=20,
+    test_size=10,
+    n=feature_dim,
+    plot_data=True
+)
+
+feature_dim = 2
+feature_map = ZZFeatureMap(feature_dimension=feature_dim, reps=2, entanglement='linear')
+qsvm = QSVM(feature_map, train_dict, test_dict)
+
+backend = BasicAer.get_backend('qasm_simulator')
+quantum_instance = QuantumInstance(backend, shots=1024, seed_simulator=seed, seed_transpiler=seed)
+
+result = qsvm.run(quantum_instance)
+
+print(f'Testing success ratio: {result["testing_accuracy"]}')
+
+# Quantum SVM algorithm testing
+
+kernel_matrix = result['kernel_matrix_training']
+plt.imshow(np.asmatrix(kernel_matrix), interpolation='nearest', origin='upper', cmap='bone_r');
+
+# Classic SVM algorithm testing
+
+result = SklearnSVM(train_dict, test_dict).run()
+print(f'Testing success ratio: {result["testing_accuracy"]}')
+
+kernel_matrix = result['kernel_matrix_training']
+plt.imshow(np.asmatrix(kernel_matrix), interpolation='nearest', origin='upper', cmap='bone_r');
+
